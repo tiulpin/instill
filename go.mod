@@ -1,3 +1,3 @@
 module github.com/tiulpin/instill
 
-go 1.25.7
+go 1.25
