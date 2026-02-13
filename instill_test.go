@@ -49,6 +49,7 @@ func TestAgentNames(t *testing.T) {
 func TestDetect(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(tmp, ".claude"))
 	if err := os.MkdirAll(filepath.Join(tmp, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
@@ -100,6 +101,7 @@ func TestDetectGlobal(t *testing.T) {
 func TestDetectEmpty(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(tmp, ".claude"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
@@ -438,6 +440,7 @@ func TestInstalledVersionError(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(tmp, ".claude"))
 	if err := os.MkdirAll(filepath.Join(tmp, ".claude"), 0o755); err != nil {
 		t.Fatal(err)

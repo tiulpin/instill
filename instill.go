@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -202,7 +203,7 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		if err != nil {
 			return fmt.Errorf("%s: %w", p, err)
 		}
-		skillDir := filepath.Dir(p)
+		skillDir := path.Dir(p)
 		files := map[string][]byte{}
 		walkErr := fs.WalkDir(fsys, skillDir, func(fp string, fd fs.DirEntry, ferr error) error {
 			if ferr != nil {
@@ -223,7 +224,7 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 			}
 			rel := fp
 			if skillDir != "." {
-				rel, _ = filepath.Rel(skillDir, fp)
+				rel = strings.TrimPrefix(fp, skillDir+"/")
 			}
 			files[rel] = content
 			return nil
