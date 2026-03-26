@@ -27,6 +27,7 @@ var agents = [...]agent{
 	{"crush", "Crush", ".crush/skills", "~/.config/crush/skills", d("~/.config/crush"), nil},
 	{"cursor", "Cursor", ".agents/skills", "~/.cursor/skills", d("~/.cursor"), e("CURSOR_TRACE_ID", "CURSOR_AGENT")},
 	{"deepagents", "Deep Agents", ".agents/skills", "~/.deepagents/agent/skills", d("~/.deepagents"), nil},
+	{"devin", "Devin", "", "", nil, nil},
 	{"droid", "Droid", ".factory/skills", "~/.factory/skills", d("~/.factory"), nil},
 	{"gemini-cli", "Gemini CLI", ".agents/skills", "~/.gemini/skills", d("~/.gemini"), e("GEMINI_CLI")},
 	{"github-copilot", "GitHub Copilot", ".agents/skills", "~/.copilot/skills", d(".github", "~/.copilot"), e("COPILOT_MODEL", "COPILOT_ALLOW_ALL", "COPILOT_GITHUB_TOKEN", "COPILOT_CLI")},
