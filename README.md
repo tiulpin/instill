@@ -55,14 +55,14 @@ func main() {
 
 ## API
 
-| Function | Description |
-|---|---|
-| `Detect(projectDir, global)` | Find which agents have config dirs present |
-| `Install(fsys, opts)` | Copy skill files to each agent's skills directory |
-| `Remove(name, opts)` | Delete an installed skill by name |
+| Function                       | Description                                                                     |
+|--------------------------------|---------------------------------------------------------------------------------|
+| `Detect(projectDir, global)`   | Find which agents have config dirs present                                      |
+| `Install(fsys, opts)`          | Copy skill files to each agent's skills directory                               |
+| `Remove(name, opts)`           | Delete an installed skill by name                                               |
 | `InstalledVersion(name, opts)` | Read `version` from an installed skill's frontmatter; returns `(string, error)` |
-| `SkillVersion(fsys)` | Read `version` from a skill FS (e.g. embedded) |
-| `AgentNames()` | List all 39 supported agent names |
+| `SkillVersion(fsys)`           | Read `version` from a skill FS (e.g. embedded)                                  |
+| `AgentNames()`                 | List all supported agent names                                                  |
 
 ## What it does
 
