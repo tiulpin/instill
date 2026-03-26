@@ -34,6 +34,198 @@ func skillFSWithRef(name string) fstest.MapFS {
 	}
 }
 
+func clearRuntimeEnvs(t *testing.T) {
+	t.Helper()
+	for i := range agents {
+		for _, env := range agents[i].runtimeEnvs {
+			t.Setenv(env, "")
+		}
+	}
+	t.Setenv("AI_AGENT", "")
+	t.Setenv("AGENT", "")
+	t.Setenv("CLAUDE_CODE_IS_COWORK", "")
+}
+
+func TestDetectRuntime(t *testing.T) {
+	clearRuntimeEnvs(t)
+
+	t.Run("no agent", func(t *testing.T) {
+		if got := DetectRuntime(); got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
+
+	t.Run("AI_AGENT universal var with known agent", func(t *testing.T) {
+		t.Setenv("AI_AGENT", "claude-code")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "claude-code" {
+			t.Errorf("Name = %q, want %q", got.Name, "claude-code")
+		}
+		if got.DisplayName != "Claude Code" {
+			t.Errorf("DisplayName = %q, want %q", got.DisplayName, "Claude Code")
+		}
+		if got.EnvVar != "AI_AGENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "AI_AGENT")
+		}
+	})
+
+	t.Run("AI_AGENT universal var with unknown agent", func(t *testing.T) {
+		t.Setenv("AI_AGENT", "future-agent")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "future-agent" {
+			t.Errorf("Name = %q, want %q", got.Name, "future-agent")
+		}
+		if got.EnvVar != "AI_AGENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "AI_AGENT")
+		}
+	})
+
+	t.Run("AGENT var with known agent", func(t *testing.T) {
+		t.Setenv("AGENT", "amp")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "amp" {
+			t.Errorf("Name = %q, want %q", got.Name, "amp")
+		}
+		if got.EnvVar != "AGENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "AGENT")
+		}
+	})
+
+	t.Run("AGENT var with unknown value ignored", func(t *testing.T) {
+		t.Setenv("AGENT", "something-random")
+		if got := DetectRuntime(); got != nil {
+			t.Errorf("unknown AGENT value should be ignored, got %+v", got)
+		}
+	})
+
+	t.Run("CLAUDECODE", func(t *testing.T) {
+		t.Setenv("CLAUDECODE", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "claude-code" {
+			t.Errorf("Name = %q, want %q", got.Name, "claude-code")
+		}
+		if got.EnvVar != "CLAUDECODE" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "CLAUDECODE")
+		}
+	})
+
+	t.Run("CLAUDE_CODE alias", func(t *testing.T) {
+		t.Setenv("CLAUDE_CODE", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "claude-code" {
+			t.Errorf("Name = %q, want %q", got.Name, "claude-code")
+		}
+	})
+
+	t.Run("cowork mode", func(t *testing.T) {
+		t.Setenv("CLAUDE_CODE_IS_COWORK", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "cowork" {
+			t.Errorf("Name = %q, want %q", got.Name, "cowork")
+		}
+		if got.EnvVar != "CLAUDE_CODE_IS_COWORK" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "CLAUDE_CODE_IS_COWORK")
+		}
+	})
+
+	t.Run("codex via CODEX_CI", func(t *testing.T) {
+		t.Setenv("CODEX_CI", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "codex" {
+			t.Errorf("Name = %q, want %q", got.Name, "codex")
+		}
+		if got.EnvVar != "CODEX_CI" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "CODEX_CI")
+		}
+	})
+
+	t.Run("codex via CODEX_THREAD_ID", func(t *testing.T) {
+		t.Setenv("CODEX_THREAD_ID", "abc123")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "codex" {
+			t.Errorf("Name = %q, want %q", got.Name, "codex")
+		}
+	})
+
+	t.Run("cursor via CURSOR_TRACE_ID", func(t *testing.T) {
+		t.Setenv("CURSOR_TRACE_ID", "trace-123")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "cursor" {
+			t.Errorf("Name = %q, want %q", got.Name, "cursor")
+		}
+		if got.EnvVar != "CURSOR_TRACE_ID" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "CURSOR_TRACE_ID")
+		}
+	})
+
+	t.Run("copilot via COPILOT_MODEL", func(t *testing.T) {
+		t.Setenv("COPILOT_MODEL", "gpt-4")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "github-copilot" {
+			t.Errorf("Name = %q, want %q", got.Name, "github-copilot")
+		}
+	})
+
+	t.Run("opencode via OPENCODE_CLIENT", func(t *testing.T) {
+		t.Setenv("OPENCODE_CLIENT", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "opencode" {
+			t.Errorf("Name = %q, want %q", got.Name, "opencode")
+		}
+		if got.EnvVar != "OPENCODE_CLIENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "OPENCODE_CLIENT")
+		}
+	})
+
+	t.Run("AI_AGENT takes priority over specific var", func(t *testing.T) {
+		t.Setenv("AI_AGENT", "cursor")
+		t.Setenv("CLAUDECODE", "1")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "cursor" {
+			t.Errorf("AI_AGENT should take priority, got Name = %q", got.Name)
+		}
+		if got.EnvVar != "AI_AGENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "AI_AGENT")
+		}
+	})
+}
+
 func TestAgentNames(t *testing.T) {
 	names := AgentNames()
 	if len(names) != len(agents) {

@@ -1,8 +1,8 @@
 # instill
 
-A Go library for installing [Agent Skills](https://agentskills.io/specification) into AI coding agents.
+A Go library for installing [Agent Skills](https://agentskills.io/specification) into AI coding agents and detecting which agent is running your code.
 
-An agent skill is just a directory with a `SKILL.md` file — markdown instructions with YAML frontmatter. Agents like Claude Code, Cursor, and Windsurf each expect these files in different locations. instill puts them there.
+40 agents can't agree on where to put a markdown file or which env var to set. instill deals with it so you don't have to.
 
 ```
 your-tool/
@@ -13,11 +13,11 @@ your-tool/
             └── commands.md
 ```
 
-That's it. No SDK, no runtime, no protocol. Markdown files in the right directories.
+No SDK, no runtime, no protocol. Markdown files in the right directories. Env vars in the right `if` statements.
 
 > **Looking for a standalone tool to manage skills?** Use [vercel-labs/skills](https://github.com/vercel-labs/skills) instead. instill is a Go library for CLI tools that want to bundle and install their own agent skills as part of their distribution.
 
-## Usage
+## Install skills
 
 ```go
 import (
@@ -53,7 +53,27 @@ func main() {
 }
 ```
 
+## Detect the running agent
+
+```go
+if agent := instill.DetectRuntime(); agent != nil {
+    fmt.Printf("running inside %s (detected via %s)\n", agent.DisplayName, agent.EnvVar)
+    // → "running inside Claude Code (detected via CLAUDECODE)"
+}
+```
+
+Detection priority:
+1. `AI_AGENT` — the emerging universal standard that everyone will adopt any day now
+2. `AGENT` — used by Amp, Goose
+3. `CLAUDE_CODE_IS_COWORK` — Claude Code cowork sessions
+4. Agent-specific env vars (`CLAUDECODE`, `CURSOR_TRACE_ID`, `CODEX_SANDBOX`, etc.)
+5. Filesystem markers (`/opt/.devin`)
+
+Returns `nil` when no agent is detected (a.k.a. a human is typing).
+
 ## API
+
+### Skill management
 
 | Function                       | Description                                                                     |
 |--------------------------------|---------------------------------------------------------------------------------|
@@ -64,16 +84,16 @@ func main() {
 | `SkillVersion(fsys)`           | Read `version` from a skill FS (e.g. embedded)                                  |
 | `AgentNames()`                 | List all supported agent names                                                  |
 
-## What it does
+### Runtime detection
 
-1. Reads your `SKILL.md` frontmatter for the skill `name`
-2. Resolves each agent's skills directory (project-local or global)
-3. Cleans the target directory (removes stale files from prior installs)
-4. Copies all skill files (`SKILL.md`, `references/`, etc.)
-5. Reports what was created vs updated, with prior version from frontmatter
+| Function          | Description                                                          |
+|-------------------|----------------------------------------------------------------------|
+| `DetectRuntime()` | Returns `*RuntimeAgent` for the agent running this process, or `nil` |
 
-## Supported agents
+`RuntimeAgent` has three fields: `Name` (e.g. `"claude-code"`), `DisplayName` (e.g. `"Claude Code"`), and `EnvVar` (the variable that matched, e.g. `"CLAUDECODE"`).
 
-39 agents supported. Paths sourced from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts).
+## Upstream sync
 
-Run `instill.AgentNames()` for the full list, or see [agents.go](agents.go).
+Agent directories are sourced from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts). Runtime env vars are cross-referenced with [vercel/vercel detect-agent](https://github.com/vercel/vercel/blob/main/packages/detect-agent/src/index.ts). A weekly agentic workflow keeps both in sync.
+
+40 agents supported. Run `instill.AgentNames()` for the full list, or see [agents.go](agents.go).

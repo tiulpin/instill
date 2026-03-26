@@ -36,6 +36,50 @@ type Result struct {
 	PriorVersion string // version from previously installed SKILL.md ("" if new)
 }
 
+type RuntimeAgent struct {
+	Name        string
+	DisplayName string
+	EnvVar      string // env var that matched, or "fs:/opt/.devin" for filesystem detection
+}
+
+// DetectRuntime returns the AI agent currently executing this process, or nil.
+func DetectRuntime() *RuntimeAgent {
+	if v := os.Getenv("AI_AGENT"); v != "" {
+		if a, ok := agentIndex[v]; ok {
+			return &RuntimeAgent{a.name, a.displayName, "AI_AGENT"}
+		}
+		return &RuntimeAgent{v, v, "AI_AGENT"}
+	}
+
+	if v := os.Getenv("AGENT"); v != "" {
+		if a, ok := agentIndex[v]; ok {
+			return &RuntimeAgent{a.name, a.displayName, "AGENT"}
+		}
+	}
+
+	if os.Getenv("CLAUDE_CODE_IS_COWORK") != "" {
+		return &RuntimeAgent{"cowork", "Claude Code (Cowork)", "CLAUDE_CODE_IS_COWORK"}
+	}
+
+	for i := range agents {
+		a := &agents[i]
+		for _, env := range a.runtimeEnvs {
+			if env == "AGENT" {
+				continue
+			}
+			if os.Getenv(env) != "" {
+				return &RuntimeAgent{a.name, a.displayName, env}
+			}
+		}
+	}
+
+	if _, err := os.Stat("/opt/.devin"); err == nil {
+		return &RuntimeAgent{"devin", "Devin", "fs:/opt/.devin"}
+	}
+
+	return nil
+}
+
 // Detect returns agents whose config directories exist in projectDir (or globally)
 func Detect(projectDir string, global bool) ([]Agent, error) {
 	var out []Agent
