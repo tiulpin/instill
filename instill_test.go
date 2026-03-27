@@ -651,7 +651,7 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{".claude/skills/roundtrip/SKILL.md", ".cursor/skills/roundtrip/SKILL.md"} {
+	for _, d := range []string{".claude/skills/roundtrip/SKILL.md", ".agents/skills/roundtrip/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(tmp, d)); err != nil {
 			t.Errorf("missing: %s", d)
 		}
@@ -661,7 +661,7 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, d := range []string{".claude/skills/roundtrip", ".cursor/skills/roundtrip"} {
+	for _, d := range []string{".claude/skills/roundtrip", ".agents/skills/roundtrip"} {
 		if _, err := os.Stat(filepath.Join(tmp, d)); !os.IsNotExist(err) {
 			t.Errorf("not removed: %s", d)
 		}
