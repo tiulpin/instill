@@ -24,6 +24,7 @@ type Agent struct {
 // Options configure Install and Remove
 type Options struct {
 	Agents     []string // required: agent names to target
+	Skills     []string // if set, only install/update these skill names (by frontmatter name)
 	ProjectDir string   // project root (for project-level operations)
 	Global     bool     // operate on global dirs instead of project-level
 }
@@ -117,6 +118,9 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 	}
 	var results []Result
 	for _, s := range skills {
+		if len(opts.Skills) > 0 && !slices.Contains(opts.Skills, s.name) {
+			continue
+		}
 		for _, dir := range slices.Sorted(maps.Keys(targets)) {
 			agentNames := targets[dir]
 			skillDir := filepath.Join(dir, s.name)
