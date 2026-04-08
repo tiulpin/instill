@@ -32,6 +32,7 @@ type Options struct {
 // Result reports what happened for each agent
 type Result struct {
 	Agent        string
+	Skill        string
 	Path         string
 	Existed      bool   // true if the skill was already present before this operation
 	PriorVersion string // version from previously installed SKILL.md ("" if new)
@@ -134,7 +135,7 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 			}
 
 			for _, an := range agentNames {
-				results = append(results, Result{an, skillDir, existed, priorVersion})
+				results = append(results, Result{Agent: an, Skill: s.name, Path: skillDir, Existed: existed, PriorVersion: priorVersion})
 			}
 		}
 	}
@@ -166,7 +167,7 @@ func Remove(skillName string, opts Options) ([]Result, error) {
 			}
 		}
 		for _, an := range agentNames {
-			results = append(results, Result{an, skillDir, existed, ""})
+			results = append(results, Result{Agent: an, Skill: skillName, Path: skillDir, Existed: existed})
 		}
 	}
 	return results, nil
