@@ -188,10 +188,16 @@ func InstalledVersion(skillName string, opts Options) (string, error) {
 	return "", nil
 }
 
-// SkillVersion returns the version from the first SKILL.md found in fsys.
-// Returns "" if no version field is present.
-func SkillVersion(fsys fs.FS) string {
-	var version string
+// SkillMeta holds metadata parsed from a SKILL.md frontmatter.
+type SkillMeta struct {
+	Name        string
+	Version     string
+	Description string
+}
+
+// ListSkills returns metadata for every skill found in fsys.
+func ListSkills(fsys fs.FS) []SkillMeta {
+	var out []SkillMeta
 	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || d.Name() != "SKILL.md" {
 			return err
@@ -200,10 +206,25 @@ func SkillVersion(fsys fs.FS) string {
 		if err != nil {
 			return err
 		}
-		version, _ = parseFrontmatterField(data, "version")
-		return fs.SkipAll
+		name, _ := parseFrontmatterField(data, "name")
+		if name == "" {
+			return fs.SkipDir
+		}
+		version, _ := parseFrontmatterField(data, "version")
+		desc, _ := parseFrontmatterField(data, "description")
+		out = append(out, SkillMeta{Name: sanitizeName(name), Version: version, Description: desc})
+		return fs.SkipDir
 	})
-	return version
+	return out
+}
+
+// SkillVersion returns the version from the first SKILL.md found in fsys.
+// Returns "" if no version field is present.
+func SkillVersion(fsys fs.FS) string {
+	if skills := ListSkills(fsys); len(skills) > 0 {
+		return skills[0].Version
+	}
+	return ""
 }
 
 func installedVersionAt(skillDir string) string {
