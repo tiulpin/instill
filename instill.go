@@ -2,6 +2,7 @@ package instill
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -34,8 +35,10 @@ type Result struct {
 	Agent        string
 	Skill        string
 	Path         string
-	Existed      bool   // true if the skill was already present before this operation
-	PriorVersion string // version from previously installed SKILL.md ("" if new)
+	Existed      bool     // true if the skill was already present before this operation
+	PriorVersion string   // version from previously installed SKILL.md ("" if new)
+	Commands     []string // command files installed (e.g., from _commands/)
+	Subagents    []string // subagent files installed (e.g., from _agents/)
 }
 
 type RuntimeAgent struct {
@@ -102,6 +105,8 @@ func Detect(projectDir string, global bool) ([]Agent, error) {
 }
 
 // Install writes skill files from fsys to each target agent's skills directory.
+// Files under _commands/ and _agents/ in the skill are installed as commands and
+// subagents for agents that support them (e.g., Claude Code).
 func Install(fsys fs.FS, opts Options) ([]Result, error) {
 	if len(opts.Agents) == 0 {
 		return nil, fmt.Errorf("instill: no agents specified")
@@ -134,15 +139,35 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 				return nil, fmt.Errorf("instill: writing to %s: %w", skillDir, writeErr)
 			}
 
+			// Write manifest for removal if skill ships commands or subagents
+			if len(s.commands) > 0 || len(s.subagents) > 0 {
+				writeManifest(skillDir, sortedKeys(s.commands), sortedKeys(s.subagents))
+			}
+
 			for _, an := range agentNames {
-				results = append(results, Result{Agent: an, Skill: s.name, Path: skillDir, Existed: existed, PriorVersion: priorVersion})
+				r := Result{Agent: an, Skill: s.name, Path: skillDir, Existed: existed, PriorVersion: priorVersion}
+
+				if cmds, installErr := installExtras(s.commands, an, commandsDirs, opts); installErr != nil {
+					return nil, installErr
+				} else {
+					r.Commands = cmds
+				}
+
+				if subs, installErr := installExtras(s.subagents, an, subagentsDirs, opts); installErr != nil {
+					return nil, installErr
+				} else {
+					r.Subagents = subs
+				}
+
+				results = append(results, r)
 			}
 		}
 	}
 	return results, nil
 }
 
-// Remove deletes installed skill files by name.
+// Remove deletes installed skill files by name, including any commands and
+// subagents that were installed alongside the skill.
 func Remove(skillName string, opts Options) ([]Result, error) {
 	if len(opts.Agents) == 0 {
 		return nil, fmt.Errorf("instill: no agents specified")
@@ -161,12 +186,18 @@ func Remove(skillName string, opts Options) ([]Result, error) {
 		skillDir := filepath.Join(dir, skillName)
 		_, statErr := os.Stat(skillDir)
 		existed := statErr == nil
+
+		// Read manifest before deleting the skill directory
+		m := readManifest(skillDir)
+
 		if existed {
 			if rmErr := os.RemoveAll(skillDir); rmErr != nil {
 				return nil, fmt.Errorf("instill: removing %s: %w", skillDir, rmErr)
 			}
 		}
 		for _, an := range agentNames {
+			removeExtras(m.Commands, an, commandsDirs, opts)
+			removeExtras(m.Subagents, an, subagentsDirs, opts)
 			results = append(results, Result{Agent: an, Skill: skillName, Path: skillDir, Existed: existed})
 		}
 	}
@@ -255,9 +286,15 @@ func resolveTargets(opts Options) (map[string][]string, error) {
 }
 
 type skillEntry struct {
-	name  string
-	files map[string][]byte
+	name      string
+	files     map[string][]byte // regular skill files
+	commands  map[string][]byte // files from _commands/ (filename → content)
+	subagents map[string][]byte // files from _agents/ (filename → content)
 }
+
+// skipDirs are directories excluded from regular skill file collection.
+// Their contents are handled separately (commands, subagents) or ignored.
+var skipDirs = map[string]bool{".git": true, "_commands": true, "_agents": true}
 
 func findSkills(fsys fs.FS) ([]skillEntry, error) {
 	var out []skillEntry
@@ -280,7 +317,7 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 				return ferr
 			}
 			if fd.IsDir() {
-				if fd.Name() == ".git" {
+				if skipDirs[fd.Name()] {
 					return fs.SkipDir
 				}
 				return nil
@@ -302,10 +339,40 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		if walkErr != nil {
 			return walkErr
 		}
-		out = append(out, skillEntry{name, files})
+		commands := collectSubdir(fsys, skillDir, "_commands")
+		subagents := collectSubdir(fsys, skillDir, "_agents")
+		out = append(out, skillEntry{name, files, commands, subagents})
 		return fs.SkipDir
 	})
 	return out, err
+}
+
+// collectSubdir reads all files from a subdirectory of a skill, returning
+// a map of filename → content. Returns nil if the subdirectory doesn't exist.
+func collectSubdir(fsys fs.FS, skillDir, subdir string) map[string][]byte {
+	dir := subdir
+	if skillDir != "." {
+		dir = skillDir + "/" + subdir
+	}
+	result := map[string][]byte{}
+	_ = fs.WalkDir(fsys, dir, func(fp string, fd fs.DirEntry, err error) error {
+		if err != nil {
+			return fs.SkipAll
+		}
+		if fd.IsDir() {
+			return nil
+		}
+		content, readErr := fs.ReadFile(fsys, fp)
+		if readErr != nil {
+			return readErr
+		}
+		result[fd.Name()] = content
+		return nil
+	})
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 var unsafeChars = regexp.MustCompile(`[^a-z0-9._-]+`)
@@ -374,6 +441,96 @@ func writeFiles(dir string, files map[string][]byte) error {
 		}
 	}
 	return nil
+}
+
+// installExtras writes command or subagent files to the appropriate directory
+// for agents that support them. Returns the list of installed filenames.
+func installExtras(files map[string][]byte, agentName string, dirs map[string][2]string, opts Options) ([]string, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	d, ok := dirs[agentName]
+	if !ok {
+		return nil, nil
+	}
+	var targetDir string
+	if opts.Global {
+		targetDir = resolvePath(d[1], "", true)
+	} else {
+		targetDir = filepath.Join(opts.ProjectDir, d[0])
+	}
+	if targetDir == "" {
+		return nil, nil
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return nil, fmt.Errorf("instill: creating %s: %w", targetDir, err)
+	}
+	var installed []string
+	for name, content := range files {
+		target := filepath.Join(targetDir, name)
+		if err := os.WriteFile(target, content, 0o644); err != nil {
+			return nil, fmt.Errorf("instill: writing %s: %w", target, err)
+		}
+		installed = append(installed, name)
+	}
+	slices.Sort(installed)
+	return installed, nil
+}
+
+// removeExtras deletes command or subagent files for agents that support them.
+func removeExtras(files []string, agentName string, dirs map[string][2]string, opts Options) {
+	if len(files) == 0 {
+		return
+	}
+	d, ok := dirs[agentName]
+	if !ok {
+		return
+	}
+	var targetDir string
+	if opts.Global {
+		targetDir = resolvePath(d[1], "", true)
+	} else {
+		targetDir = filepath.Join(opts.ProjectDir, d[0])
+	}
+	if targetDir == "" {
+		return
+	}
+	for _, name := range files {
+		_ = os.Remove(filepath.Join(targetDir, name))
+	}
+}
+
+type extrasManifest struct {
+	Commands  []string `json:"commands,omitempty"`
+	Subagents []string `json:"subagents,omitempty"`
+}
+
+func writeManifest(skillDir string, commands, subagents []string) {
+	m := extrasManifest{Commands: commands, Subagents: subagents}
+	data, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(skillDir, ".instill.json"), data, 0o644)
+}
+
+func readManifest(skillDir string) extrasManifest {
+	data, err := os.ReadFile(filepath.Join(skillDir, ".instill.json"))
+	if err != nil {
+		return extrasManifest{}
+	}
+	var m extrasManifest
+	_ = json.Unmarshal(data, &m)
+	return m
+}
+
+func sortedKeys(m map[string][]byte) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }
 
 func resolvePath(path, projectDir string, global bool) string {

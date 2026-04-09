@@ -69,6 +69,17 @@ var agentIndex = func() map[string]*agent {
 	return m
 }()
 
+// commandsDirs maps agent names to [project, global] command directories.
+// Only agents with dedicated command file support need entries here.
+var commandsDirs = map[string][2]string{
+	"claude-code": {".claude/commands", "$CLAUDE_CONFIG_DIR/commands"},
+}
+
+// subagentsDirs maps agent names to [project, global] subagent directories.
+var subagentsDirs = map[string][2]string{
+	"claude-code": {".claude/agents", "$CLAUDE_CONFIG_DIR/agents"},
+}
+
 // AgentNames returns all known agent names in sorted order.
 func AgentNames() []string {
 	names := make([]string, len(agents))
