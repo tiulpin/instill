@@ -53,6 +53,11 @@ func DetectRuntime() *RuntimeAgent {
 		if a, ok := agentIndex[v]; ok {
 			return &RuntimeAgent{a.name, a.displayName, "AI_AGENT"}
 		}
+		if name, ok := parseVersionedAgent(v); ok {
+			if a, ok := agentIndex[name]; ok {
+				return &RuntimeAgent{a.name, a.displayName, "AI_AGENT"}
+			}
+		}
 		return &RuntimeAgent{v, v, "AI_AGENT"}
 	}
 
@@ -83,6 +88,19 @@ func DetectRuntime() *RuntimeAgent {
 	}
 
 	return nil
+}
+
+// parseVersionedAgent extracts the agent name from the "<name>_<version>_agent"
+func parseVersionedAgent(v string) (string, bool) {
+	rest, ok := strings.CutSuffix(v, "_agent")
+	if !ok || rest == "" {
+		return "", false
+	}
+	idx := strings.LastIndex(rest, "_")
+	if idx <= 0 {
+		return "", false
+	}
+	return rest[:idx], true
 }
 
 // Detect returns agents whose config directories exist in projectDir (or globally)

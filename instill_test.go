@@ -86,6 +86,34 @@ func TestDetectRuntime(t *testing.T) {
 		}
 	})
 
+	t.Run("AI_AGENT versioned form canonicalized", func(t *testing.T) {
+		t.Setenv("AI_AGENT", "claude-code_2-1-146_agent")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "claude-code" {
+			t.Errorf("Name = %q, want %q", got.Name, "claude-code")
+		}
+		if got.DisplayName != "Claude Code" {
+			t.Errorf("DisplayName = %q, want %q", got.DisplayName, "Claude Code")
+		}
+		if got.EnvVar != "AI_AGENT" {
+			t.Errorf("EnvVar = %q, want %q", got.EnvVar, "AI_AGENT")
+		}
+	})
+
+	t.Run("AI_AGENT versioned form with unknown name falls through", func(t *testing.T) {
+		t.Setenv("AI_AGENT", "future-agent_9-9-9_agent")
+		got := DetectRuntime()
+		if got == nil {
+			t.Fatal("expected non-nil")
+		}
+		if got.Name != "future-agent_9-9-9_agent" {
+			t.Errorf("Name = %q, want raw value", got.Name)
+		}
+	})
+
 	t.Run("AGENT var with known agent", func(t *testing.T) {
 		t.Setenv("AGENT", "amp")
 		got := DetectRuntime()
