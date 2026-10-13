@@ -64,7 +64,7 @@ This Go library (`github.com/tiulpin/instill`) manages skill installation and ru
    - Note: detect-agent checks `CLAUDE_CODE_IS_COWORK` for cowork mode — this is handled as a special case in `DetectRuntime()`, not as a per-agent env var.
    - Note: detect-agent checks `/opt/.devin` filesystem path — this is handled in `DetectRuntime()` as a fallback, not in per-agent `runtimeEnvs`.
 
-5. **If no changes needed**: Exit cleanly, do not create a PR.
+5. **If no changes needed**: Do not create a PR. You MUST call the `noop` safe output tool with a short message (e.g. "agents.go is up to date with upstream") — finishing without calling any safe output is treated as a failure.
 
 6. **If changes are needed**: Update `agents.go`:
    - Add new agents in alphabetical order within the array
@@ -78,6 +78,6 @@ This Go library (`github.com/tiulpin/instill`) manages skill installation and ru
 
 7. **Update tests**: If changes affect test expectations in `instill_test.go`, update those too. Run `go test ./... -race` to verify everything passes.
 
-8. **Create a pull request** with the changes. The PR description should list what changed, grouped by source:
+8. **Create a pull request** (using the `create_pull_request` safe output) with the changes. The PR description should list what changed, grouped by source:
    - From vercel-labs/skills: new agents, updated paths, removed agents
    - From vercel/vercel detect-agent: new runtime env vars, updated mappings, removed mappings
