@@ -2,7 +2,7 @@
 
 A Go library for installing [Agent Skills](https://agentskills.io/specification) into AI coding agents and detecting which agent is running your code.
 
-40 agents can't agree on where to put a markdown file or which env var to set. instill deals with it so you don't have to.
+76 agents can't agree on where to put a markdown file or which env var to set. instill deals with it so you don't have to.
 
 ```
 your-tool/
@@ -96,4 +96,4 @@ Returns `nil` when no agent is detected (a.k.a. a human is typing).
 
 Agent directories are sourced from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts). Runtime env vars are cross-referenced with [vercel/vercel detect-agent](https://github.com/vercel/vercel/blob/main/packages/detect-agent/src/index.ts). A weekly agentic workflow keeps both in sync.
 
-40 agents supported. Run `instill.AgentNames()` for the full list, or see [agents.go](agents.go).
+76 agents supported. Run `instill.AgentNames()` for the full list, or see [agents.go](agents.go).

@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -294,7 +295,9 @@ func resolveTargets(opts Options) (map[string][]string, error) {
 		}
 		var dir string
 		if opts.Global {
-			dir = resolvePath(a.globalDir, "", true)
+			if dir = resolvePath(a.globalDir, "", true); dir == "" {
+				return nil, fmt.Errorf("instill: no global skills directory for %q", name)
+			}
 		} else {
 			dir = filepath.Join(opts.ProjectDir, a.skillsDir)
 		}
@@ -552,7 +555,9 @@ func sortedKeys(m map[string][]byte) []string {
 }
 
 func resolvePath(path, projectDir string, global bool) string {
-	path = expandEnv(path)
+	if path = expandEnv(path); path == "" {
+		return ""
+	}
 	if strings.HasPrefix(path, "~") {
 		home, _ := os.UserHomeDir()
 		if path == "~" {
@@ -573,19 +578,42 @@ var envDefaults = map[string]string{
 	"XDG_CONFIG_HOME":   "~/.config",
 	"CLAUDE_CONFIG_DIR": "~/.claude",
 	"CODEX_HOME":        "~/.codex",
+	"VIBE_HOME":         "~/.vibe",
+	"HERMES_HOME":       "~/.hermes",
+	"AUTOHAND_HOME":     "~/.autohand",
+	"GROK_HOME":         "~/.grok",
+	"SARVAM_HOME":       "~/.sarvam",
+	"REASONIX_HOME":     reasonixHome(),
 }
 
+func reasonixHome() string {
+	if runtime.GOOS == "windows" {
+		return "$APPDATA/reasonix"
+	}
+	return "~/.reasonix"
+}
+
+// expandEnv substitutes $VARS, falling back to envDefaults; returns "" if a variable has no value.
 func expandEnv(path string) string {
-	for k, def := range envDefaults {
-		ph := "$" + k
-		if strings.Contains(path, ph) {
-			v := strings.TrimSpace(os.Getenv(k))
-			if v == "" {
-				home, _ := os.UserHomeDir()
-				v = strings.Replace(def, "~", home, 1)
-			}
-			path = strings.ReplaceAll(path, ph, v)
+	missing := false
+	path = os.Expand(path, func(k string) string {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
 		}
+		def, ok := envDefaults[k]
+		if !ok {
+			missing = true
+			return ""
+		}
+		if def = expandEnv(def); def == "" {
+			missing = true
+			return ""
+		}
+		home, _ := os.UserHomeDir()
+		return strings.Replace(def, "~", home, 1)
+	})
+	if missing {
+		return ""
 	}
 	return path
 }
