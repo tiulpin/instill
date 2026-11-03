@@ -28,6 +28,7 @@ type Options struct {
 	Skills     []string // if set, only install/update these skill names (by frontmatter name)
 	ProjectDir string   // project root (for project-level operations)
 	Global     bool     // operate on global dirs instead of project-level
+	Command    string   // required by Install: CLI that serves `<Command> skill guide <skill>`
 }
 
 // Result reports what happened for each agent
@@ -122,12 +123,17 @@ func Detect(projectDir string, global bool) ([]Agent, error) {
 	return out, nil
 }
 
-// Install writes skill files from fsys to each target agent's skills directory.
-// Files under _commands/ and _agents/ in the skill are installed as commands and
-// subagents for agents that support them (e.g., Claude Code).
+// Install writes a stub SKILL.md to each target agent's skills directory: the original
+// frontmatter and a body pointing at `<Command> skill guide <skill>`, which serves the
+// .md pages through Guide. Other files (scripts, assets) are copied as is. Files under
+// _commands/ and _agents/ are installed as commands and subagents for agents that
+// support them (e.g., Claude Code).
 func Install(fsys fs.FS, opts Options) ([]Result, error) {
 	if len(opts.Agents) == 0 {
 		return nil, fmt.Errorf("instill: no agents specified")
+	}
+	if opts.Command == "" {
+		return nil, fmt.Errorf("instill: no command specified")
 	}
 	skills, err := findSkills(fsys)
 	if err != nil {
@@ -153,7 +159,7 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 
 			priorVersion := installedVersionAt(skillDir)
 
-			if writeErr := writeFiles(skillDir, s.files); writeErr != nil {
+			if writeErr := writeFiles(skillDir, stubFiles(s, opts.Command)); writeErr != nil {
 				return nil, fmt.Errorf("instill: writing to %s: %w", skillDir, writeErr)
 			}
 
@@ -363,6 +369,29 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		return fs.SkipDir
 	})
 	return out, err
+}
+
+// stubFiles replaces SKILL.md with a stub and drops the pages Guide serves.
+func stubFiles(s skillEntry, command string) map[string][]byte {
+	files := map[string][]byte{"SKILL.md": stub(s.files["SKILL.md"], command, s.name)}
+	for rel, content := range s.files {
+		if path.Ext(rel) != ".md" {
+			files[rel] = content
+		}
+	}
+	return files
+}
+
+func stub(skillMD []byte, command, name string) []byte {
+	front, _ := splitFrontmatter(skillMD)
+	return fmt.Appendf(nil, `%s
+
+# %s
+
+This file is a discovery stub. Run `+"`%s skill guide %s`"+` and follow the guide it prints; it matches the installed `+"`%s`"+` version and lists further topics.
+
+If `+"`%s skill guide`"+` is unavailable, use `+"`%s --help`"+`.
+`, front, name, command, name, command, command, command)
 }
 
 // collectSubdir reads all files from a subdirectory of a skill, returning

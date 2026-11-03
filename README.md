@@ -43,6 +43,7 @@ func main() {
     results, err := instill.Install(skills, instill.Options{
         Agents:     names,
         ProjectDir: ".",
+        Command:    "your-tool",
     })
     if err != nil {
         log.Fatal(err)
@@ -52,6 +53,19 @@ func main() {
     }
 }
 ```
+
+## Serve the guide
+
+`Install` writes a stub: the original frontmatter plus a pointer to `your-tool skill guide <skill>`. The pages stay in the binary, so agents always read the guide that matches the installed version and upgrades need no reinstall. Scripts, assets, `_commands/` and `_agents/` are still installed.
+
+Wire the command to `Guide`:
+
+```go
+// your-tool skill guide <skill> [topic]
+page, err := instill.Guide(skills, "your-tool", args[0], topic)
+```
+
+`Guide` prints the `SKILL.md` body with a list of topics, or one page by path or stem (`references/commands`, `commands`). Relative `.md` links become guide commands.
 
 ## Detect the running agent
 
@@ -78,7 +92,7 @@ Returns `nil` when no agent is detected (a.k.a. a human is typing).
 | Function                        | Description                                                                     |
 |---------------------------------|---------------------------------------------------------------------------------|
 | `Detect(projectDir, global)`    | Find which agents have config dirs present                                      |
-| `Install(fsys, opts)`           | Copy skill files to each agent's skills directory                               |
+| `Install(fsys, opts)`           | Install a stub skill into each agent's skills directory                         |
 | `Remove(name, opts)`            | Delete an installed skill by name                                               |
 | `InstalledVersion(name, opts)`  | Read `version` from an installed skill's frontmatter; returns `(string, error)` |
 | `SkillVersion(fsys)`            | Read `version` from a skill FS (e.g. embedded)                                  |

@@ -23,7 +23,7 @@ func Guide(fsys fs.FS, command, skill, topic string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		page := rewriteLinks(fsys, dir, ".", stripFrontmatter(data), command, skill)
+		page := rewriteLinks(fsys, dir, ".", body(data), command, skill)
 		if len(topics) > 0 {
 			page = strings.TrimRight(page, "\n") + fmt.Sprintf("\n\n## Topics\n\nRun `%s skill guide %s <topic>`:\n\n", command, skill)
 			for _, t := range topics {
@@ -143,14 +143,20 @@ func rewriteLinks(fsys fs.FS, dir, pageDir, page, command, skill string) string 
 	})
 }
 
-func stripFrontmatter(data []byte) string {
+func body(data []byte) string {
+	_, b := splitFrontmatter(data)
+	return b
+}
+
+// splitFrontmatter returns the frontmatter block (with its --- fences) and the body.
+func splitFrontmatter(data []byte) (string, string) {
 	trimmed := bytes.TrimSpace(data)
 	if !bytes.HasPrefix(trimmed, []byte("---")) {
-		return string(data)
+		return "", string(data)
 	}
 	parts := bytes.SplitN(trimmed, []byte("---"), 3)
 	if len(parts) < 3 {
-		return string(data)
+		return "", string(data)
 	}
-	return strings.TrimLeft(string(parts[2]), "\n")
+	return "---" + string(parts[1]) + "---", strings.TrimLeft(string(parts[2]), "\n")
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -339,6 +340,7 @@ func TestInstall(t *testing.T) {
 	tmp := t.TempDir()
 
 	results, err := Install(skillFSWithRef("my-tool"), Options{
+		Command:    "tool",
 		Agents:     []string{"claude-code"},
 		ProjectDir: tmp,
 	})
@@ -348,11 +350,17 @@ func TestInstall(t *testing.T) {
 	if len(results) != 1 || results[0].Agent != "claude-code" || results[0].Existed {
 		t.Fatalf("unexpected results: %+v", results)
 	}
-	for _, rel := range []string{"SKILL.md", "references/commands.md"} {
-		p := filepath.Join(tmp, ".claude/skills/my-tool", rel)
-		if _, err := os.Stat(p); err != nil {
-			t.Errorf("missing %s: %v", rel, err)
-		}
+	dir := filepath.Join(tmp, ".claude/skills/my-tool")
+	data, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "---\nname: my-tool\n---\n\n# my-tool\n\nThis file is a discovery stub. Run `tool skill guide my-tool`"
+	if !strings.HasPrefix(string(data), want) {
+		t.Errorf("stub = %q, want prefix %q", data, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "references/commands.md")); err == nil {
+		t.Error("references/commands.md should be served by Guide, not installed")
 	}
 }
 
@@ -365,7 +373,7 @@ func TestInstallOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results, err := Install(skillFS("x"), Options{Agents: []string{"claude-code"}, ProjectDir: tmp})
+	results, err := Install(skillFS("x"), Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +390,7 @@ func TestInstallGlobal(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(tmp, ".claude"))
 
-	_, err := Install(skillFS("x"), Options{Agents: []string{"claude-code"}, Global: true})
+	_, err := Install(skillFS("x"), Options{Command: "tool", Agents: []string{"claude-code"}, Global: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,6 +403,7 @@ func TestInstallDedup(t *testing.T) {
 	tmp := t.TempDir()
 
 	results, err := Install(skillFS("x"), Options{
+		Command:    "tool",
 		Agents:     []string{"amp", "codex"}, // both use .agents/skills
 		ProjectDir: tmp,
 	})
@@ -410,14 +419,17 @@ func TestInstallDedup(t *testing.T) {
 }
 
 func TestInstallErrors(t *testing.T) {
-	if _, err := Install(skillFS("x"), Options{ProjectDir: t.TempDir()}); err == nil {
+	if _, err := Install(skillFS("x"), Options{Command: "tool", ProjectDir: t.TempDir()}); err == nil {
 		t.Error("expected error: no agents")
 	}
-	if _, err := Install(skillFS("x"), Options{Agents: []string{"nope"}, ProjectDir: t.TempDir()}); err == nil {
+	if _, err := Install(skillFS("x"), Options{Command: "tool", Agents: []string{"nope"}, ProjectDir: t.TempDir()}); err == nil {
 		t.Error("expected error: unknown agent")
 	}
+	if _, err := Install(skillFS("x"), Options{Agents: []string{"claude-code"}, ProjectDir: t.TempDir()}); err == nil {
+		t.Error("expected error: no command")
+	}
 	empty := fstest.MapFS{}
-	if _, err := Install(empty, Options{Agents: []string{"claude-code"}, ProjectDir: t.TempDir()}); err == nil {
+	if _, err := Install(empty, Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: t.TempDir()}); err == nil {
 		t.Error("expected error: no SKILL.md")
 	}
 }
@@ -497,13 +509,13 @@ func TestParseName(t *testing.T) {
 func TestInstallExcludesFiles(t *testing.T) {
 	tmp := t.TempDir()
 	fsys := fstest.MapFS{
-		"SKILL.md":      &fstest.MapFile{Data: []byte("---\nname: x\n---\n")},
-		"README.md":     &fstest.MapFile{Data: []byte("repo readme")},
-		"metadata.json": &fstest.MapFile{Data: []byte("{}")},
-		"_internal.md":  &fstest.MapFile{Data: []byte("private")},
-		"references.md": &fstest.MapFile{Data: []byte("keep this")},
+		"SKILL.md":       &fstest.MapFile{Data: []byte("---\nname: x\n---\n")},
+		"README.md":      &fstest.MapFile{Data: []byte("repo readme")},
+		"metadata.json":  &fstest.MapFile{Data: []byte("{}")},
+		"_internal.md":   &fstest.MapFile{Data: []byte("private")},
+		"scripts/run.sh": &fstest.MapFile{Data: []byte("keep this")},
 	}
-	_, err := Install(fsys, Options{Agents: []string{"claude-code"}, ProjectDir: tmp})
+	_, err := Install(fsys, Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,8 +525,8 @@ func TestInstallExcludesFiles(t *testing.T) {
 			t.Errorf("%s should have been excluded", excluded)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "references.md")); err != nil {
-		t.Error("references.md should have been installed")
+	if _, err := os.Stat(filepath.Join(dir, "scripts/run.sh")); err != nil {
+		t.Error("scripts/run.sh should have been installed")
 	}
 }
 
@@ -528,7 +540,7 @@ func TestInstallCleansStaleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Install(skillFS("x"), Options{Agents: []string{"claude-code"}, ProjectDir: tmp})
+	_, err := Install(skillFS("x"), Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -539,7 +551,7 @@ func TestInstallCleansStaleFiles(t *testing.T) {
 
 func TestInstallVersion(t *testing.T) {
 	tmp := t.TempDir()
-	opts := Options{Agents: []string{"claude-code"}, ProjectDir: tmp}
+	opts := Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: tmp}
 
 	results, err := Install(skillFSVersioned("x", "1.0"), opts)
 	if err != nil {
@@ -571,7 +583,7 @@ func TestInstallVersion(t *testing.T) {
 
 func TestInstallNoVersion(t *testing.T) {
 	tmp := t.TempDir()
-	opts := Options{Agents: []string{"claude-code"}, ProjectDir: tmp}
+	opts := Options{Command: "tool", Agents: []string{"claude-code"}, ProjectDir: tmp}
 
 	_, err := Install(skillFS("x"), opts)
 	if err != nil {
@@ -630,7 +642,7 @@ func TestInstallDeterministicOrder(t *testing.T) {
 	var first []string
 	for i := 0; i < 10; i++ {
 		dir := filepath.Join(tmp, fmt.Sprintf("run%d", i))
-		results, err := Install(skillFS("x"), Options{Agents: agents, ProjectDir: dir})
+		results, err := Install(skillFS("x"), Options{Command: "tool", Agents: agents, ProjectDir: dir})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -675,7 +687,7 @@ func TestRoundTrip(t *testing.T) {
 		names[i] = a.Name
 	}
 
-	_, err := Install(skillFS("roundtrip"), Options{Agents: names, ProjectDir: tmp})
+	_, err := Install(skillFS("roundtrip"), Options{Command: "tool", Agents: names, ProjectDir: tmp})
 	if err != nil {
 		t.Fatal(err)
 	}
