@@ -325,6 +325,7 @@ func TestDetectEmpty(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(tmp, ".claude"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmp, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
+	t.Setenv("APPDATA", filepath.Join(tmp, "AppData"))
 
 	got, err := Detect(tmp, false)
 	if err != nil {
@@ -693,5 +694,40 @@ func TestRoundTrip(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(tmp, d)); !os.IsNotExist(err) {
 			t.Errorf("not removed: %s", d)
 		}
+	}
+}
+
+func TestExpandEnv(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("VIBE_HOME", "")
+	t.Setenv("FLATPAK_XDG_CONFIG_HOME", "")
+
+	if got, want := filepath.Clean(expandEnv("$VIBE_HOME/skills")), filepath.Join(tmp, ".vibe", "skills"); got != want {
+		t.Errorf("default: got %q, want %q", got, want)
+	}
+	t.Setenv("VIBE_HOME", "/opt/vibe")
+	if got := expandEnv("$VIBE_HOME/skills"); got != "/opt/vibe/skills" {
+		t.Errorf("set: got %q", got)
+	}
+	if got := expandEnv("$FLATPAK_XDG_CONFIG_HOME/zed"); got != "" {
+		t.Errorf("unset without default: got %q, want empty", got)
+	}
+	if got := resolvePath("$FLATPAK_XDG_CONFIG_HOME/zed", tmp, false); got != "" {
+		t.Errorf("unresolved path must not fall back to project dir, got %q", got)
+	}
+}
+
+func TestInstallGlobalCodexSharesAgentsDir(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+
+	if _, err := Install(skillFS("x"), Options{Agents: []string{"codex"}, Global: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, ".agents/skills/x/SKILL.md")); err != nil {
+		t.Errorf("codex global skill not in ~/.agents/skills: %v", err)
 	}
 }
