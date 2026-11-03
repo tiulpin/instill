@@ -75,14 +75,16 @@ Returns `nil` when no agent is detected (a.k.a. a human is typing).
 
 ### Skill management
 
-| Function                       | Description                                                                     |
-|--------------------------------|---------------------------------------------------------------------------------|
-| `Detect(projectDir, global)`   | Find which agents have config dirs present                                      |
-| `Install(fsys, opts)`          | Copy skill files to each agent's skills directory                               |
-| `Remove(name, opts)`           | Delete an installed skill by name                                               |
-| `InstalledVersion(name, opts)` | Read `version` from an installed skill's frontmatter; returns `(string, error)` |
-| `SkillVersion(fsys)`           | Read `version` from a skill FS (e.g. embedded)                                  |
-| `AgentNames()`                 | List all supported agent names                                                  |
+| Function                        | Description                                                                     |
+|---------------------------------|---------------------------------------------------------------------------------|
+| `Detect(projectDir, global)`    | Find which agents have config dirs present                                      |
+| `Install(fsys, opts)`           | Copy skill files to each agent's skills directory                               |
+| `Remove(name, opts)`            | Delete an installed skill by name                                               |
+| `InstalledVersion(name, opts)`  | Read `version` from an installed skill's frontmatter; returns `(string, error)` |
+| `SkillVersion(fsys)`            | Read `version` from a skill FS (e.g. embedded)                                  |
+| `Guide(fsys, cmd, name, topic)` | Render a skill page for `<cmd> skill guide <name> [topic]`                      |
+| `Topics(fsys, name)`            | List a skill's pages, e.g. `references/commands`                                |
+| `AgentNames()`                  | List all supported agent names                                                  |
 
 ### Runtime detection
 
