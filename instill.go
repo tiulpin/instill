@@ -197,7 +197,7 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 
 			// Write manifest for removal if skill ships commands or subagents
 			if len(s.commands) > 0 || len(s.subagents) > 0 {
-				writeManifest(skillDir, sortedKeys(s.commands), sortedKeys(s.subagents))
+				writeManifest(skillDir, slices.Sorted(maps.Keys(s.commands)), slices.Sorted(maps.Keys(s.subagents)))
 			}
 
 			for _, an := range agentNames {
@@ -641,25 +641,13 @@ func readManifest(skillDir string) extrasManifest {
 	return m
 }
 
-func sortedKeys(m map[string][]byte) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-	return keys
-}
-
 func resolvePath(path, projectDir string, global bool) string {
 	if path = expandEnv(path); path == "" {
 		return ""
 	}
-	if strings.HasPrefix(path, "~") {
+	if rest, ok := strings.CutPrefix(path, "~"); ok {
 		home, _ := os.UserHomeDir()
-		if path == "~" {
-			return home
-		}
-		return filepath.Join(home, path[2:])
+		return filepath.Join(home, rest)
 	}
 	if filepath.IsAbs(path) {
 		return path

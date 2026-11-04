@@ -1,6 +1,6 @@
 package instill
 
-import "sort"
+import "slices"
 
 type agent struct {
 	name, displayName string
@@ -120,6 +120,6 @@ func AgentNames() []string {
 	for i := range agents {
 		names[i] = agents[i].name
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
