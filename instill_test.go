@@ -44,6 +44,8 @@ func clearRuntimeEnvs(t *testing.T) {
 	t.Setenv("AI_AGENT", "")
 	t.Setenv("AGENT", "")
 	t.Setenv("CLAUDE_CODE_IS_COWORK", "")
+	t.Setenv("CURSOR_TRACE_ID", "")
+	t.Setenv("CURSOR_EXTENSION_HOST_ROLE", "")
 }
 
 func TestDetectRuntime(t *testing.T) {
@@ -729,5 +731,37 @@ func TestInstallGlobalCodexSharesAgentsDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmp, ".agents/skills/x/SKILL.md")); err != nil {
 		t.Errorf("codex global skill not in ~/.agents/skills: %v", err)
+	}
+}
+
+func TestDetectRuntimeVercelCompat(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want string
+		via  string
+	}{
+		{"agent started from Cursor's terminal", map[string]string{"CURSOR_TRACE_ID": "t", "GEMINI_CLI": "1"}, "gemini-cli", "GEMINI_CLI"},
+		{"Cursor agent shell", map[string]string{"CURSOR_EXTENSION_HOST_ROLE": "agent-exec"}, "cursor", "CURSOR_EXTENSION_HOST_ROLE"},
+		{"other extension host role", map[string]string{"CURSOR_EXTENSION_HOST_ROLE": "user"}, "", ""},
+		{"vercel AI_AGENT name", map[string]string{"AI_AGENT": "claude"}, "claude-code", "AI_AGENT"},
+		{"AI_AGENT alias with spaces", map[string]string{"AI_AGENT": " github-copilot-cli "}, "github-copilot", "AI_AGENT"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearRuntimeEnvs(t)
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			got := DetectRuntime()
+			if tc.want == "" {
+				if got != nil && got.EnvVar != "fs:/opt/.devin" {
+					t.Errorf("got %+v, want nil", got)
+				}
+				return
+			}
+			if got == nil || got.Name != tc.want || got.EnvVar != tc.via {
+				t.Errorf("got %+v, want %s via %s", got, tc.want, tc.via)
+			}
+		})
 	}
 }

@@ -50,7 +50,10 @@ type RuntimeAgent struct {
 
 // DetectRuntime returns the AI agent currently executing this process, or nil.
 func DetectRuntime() *RuntimeAgent {
-	if v := os.Getenv("AI_AGENT"); v != "" {
+	if v := strings.TrimSpace(os.Getenv("AI_AGENT")); v != "" {
+		if alias, ok := runtimeAliases[v]; ok {
+			v = alias
+		}
 		if a, ok := agentIndex[v]; ok {
 			return &RuntimeAgent{a.name, a.displayName, "AI_AGENT"}
 		}
@@ -84,11 +87,28 @@ func DetectRuntime() *RuntimeAgent {
 		}
 	}
 
+	// Cursor's terminal sets CURSOR_TRACE_ID for every process, so other agents started there win.
+	if os.Getenv("CURSOR_EXTENSION_HOST_ROLE") == "agent-exec" {
+		return &RuntimeAgent{"cursor", "Cursor", "CURSOR_EXTENSION_HOST_ROLE"}
+	}
+	if os.Getenv("CURSOR_TRACE_ID") != "" {
+		return &RuntimeAgent{"cursor", "Cursor", "CURSOR_TRACE_ID"}
+	}
+
 	if _, err := os.Stat("/opt/.devin"); err == nil {
 		return &RuntimeAgent{"devin", "Devin", "fs:/opt/.devin"}
 	}
 
 	return nil
+}
+
+// runtimeAliases maps AI_AGENT values used by vercel/vercel detect-agent to instill names.
+var runtimeAliases = map[string]string{
+	"claude":             "claude-code",
+	"cursor-cli":         "cursor",
+	"gemini":             "gemini-cli",
+	"augment-cli":        "augment",
+	"github-copilot-cli": "github-copilot",
 }
 
 // parseVersionedAgent extracts the agent name from the "<name>_<version>_agent"

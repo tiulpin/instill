@@ -58,18 +58,20 @@ func main() {
 ```go
 if agent := instill.DetectRuntime(); agent != nil {
     fmt.Printf("running inside %s (detected via %s)\n", agent.DisplayName, agent.EnvVar)
-    // → "running inside Claude Code (detected via CLAUDECODE)"
+    // running inside Claude Code (detected via CLAUDECODE)
 }
 ```
 
-Detection priority:
-1. `AI_AGENT` — the emerging universal standard that everyone will adopt any day now
-2. `AGENT` — used by Amp, Goose
-3. `CLAUDE_CODE_IS_COWORK` — Claude Code cowork sessions
-4. Agent-specific env vars (`CLAUDECODE`, `CURSOR_TRACE_ID`, `CODEX_SANDBOX`, etc.)
-5. Filesystem markers (`/opt/.devin`)
+`DetectRuntime` checks, in order:
 
-Returns `nil` when no agent is detected (a.k.a. a human is typing).
+1. `AI_AGENT`, the cross-agent variable that everyone will adopt any day now. Names from vercel's detect-agent, such as `claude` or `github-copilot-cli`, map to instill's agent names.
+2. `AGENT`, set by Amp and Goose
+3. `CLAUDE_CODE_IS_COWORK`, set in Claude Code cowork sessions
+4. agent-specific variables such as `CLAUDECODE`, `GEMINI_CLI` and `CODEX_SANDBOX`
+5. Cursor: `CURSOR_EXTENSION_HOST_ROLE=agent-exec`, then `CURSOR_TRACE_ID`. Cursor's terminal sets the trace ID for every process, so it is checked last and an agent started from that terminal is reported as itself.
+6. filesystem markers (`/opt/.devin`)
+
+It returns `nil` when no agent matches, which usually means a human is typing.
 
 ## API
 
