@@ -1,57 +1,79 @@
 # instill
 
-A Go library for installing [Agent Skills](https://agentskills.io/specification) into AI coding agents and detecting which agent is running your code.
+instill is a Go library for CLI tools that ship their own [Agent Skills](https://agentskills.io/specification). It installs skills into the coding agents found on the machine, can serve their pages from your binary instead, and reports which agent is running your process.
 
-76 agents can't agree on where to put a markdown file or which env var to set. instill deals with it so you don't have to.
+Every agent keeps skills in a different directory and sets different environment variables. instill keeps that table so your CLI doesn't have to.
+
+To install skills from git repositories, use [vercel-labs/skills](https://github.com/vercel-labs/skills) instead.
+
+## Skill layout
 
 ```
 your-tool/
 └── skills/
     └── your-skill/
-        ├── SKILL.md              # instructions + frontmatter
-        └── references/           # optional detailed docs
-            └── commands.md
+        ├── SKILL.md          # frontmatter and instructions
+        ├── references/       # pages served by Guide
+        │   └── commands.md
+        ├── scripts/          # copied on install
+        ├── assets/           # copied on install
+        └── _agents/          # Claude Code subagents
 ```
 
-No SDK, no runtime, no protocol. Markdown files in the right directories. Env vars in the right `if` statements.
-
-> **Looking for a standalone tool to manage skills?** Use [vercel-labs/skills](https://github.com/vercel-labs/skills) instead. instill is a Go library for CLI tools that want to bundle and install their own agent skills as part of their distribution.
+`SKILL.md` needs `name` and `description` in its frontmatter. `version`, at the top level or under `metadata`, is what `InstalledVersion` reports. A skill with `metadata.internal: true` is left out of `ListSkills` and installed only when `Options.Skills` names it.
 
 ## Install skills
 
 ```go
-import (
-    "embed"
-    "fmt"
-    "log"
-
-    "github.com/tiulpin/instill"
-)
-
 //go:embed skills
 var skills embed.FS
 
-func main() {
-    // Detect which agents are present
-    agents, _ := instill.Detect(".", false)
+func install() error {
+    agents, err := instill.Detect(".", false)
+    if err != nil {
+        return err
+    }
     names := make([]string, len(agents))
     for i, a := range agents {
         names[i] = a.Name
     }
 
-    // Install skill files to each agent's expected location
     results, err := instill.Install(skills, instill.Options{
         Agents:     names,
         ProjectDir: ".",
     })
     if err != nil {
-        log.Fatal(err)
+        return err
     }
     for _, r := range results {
         fmt.Printf("%s: %s (existed=%v)\n", r.Agent, r.Path, r.Existed)
     }
+    return nil
 }
 ```
+
+`Install` copies each skill into the agents' skill directories. For Claude Code, files in `_commands/` and `_agents/` become slash commands and subagents. Agents that share a directory get one copy. Reinstalling replaces the skill directory and deletes commands and subagents the skill no longer ships. `Remove` deletes the skill along with its commands and subagents.
+
+Set `Global` to install into each agent's home directory instead of the project.
+
+## Serve the guide from the binary
+
+A copied skill keeps the pages of the version that installed it until the next install. To keep the instructions in step with the binary, set `Command` and add a `skill guide <skill> [topic]` command to your CLI:
+
+```go
+instill.Install(skills, instill.Options{Agents: names, ProjectDir: ".", Command: "your-tool"})
+
+// your-tool skill guide <skill> [topic]
+page, err := instill.Guide(skills, "your-tool", skill, topic)
+if err != nil {
+    return err
+}
+fmt.Print(page)
+```
+
+With `Command` set, `Install` writes a short `SKILL.md` with the original frontmatter and a body that tells the agent to run `your-tool skill guide your-skill`. Markdown pages stay in the binary. Everything under `assets/` and `scripts/`, Markdown included, is copied along with any other non-Markdown file. Those copies only change on reinstall, so a skill that ships them should be reinstalled when `InstalledVersion` differs from `SkillVersion`.
+
+Without a topic, `Guide` returns the `SKILL.md` body and a list of topics. A topic is a page path without `.md`, such as `references/commands`, or just `commands` if no other page has that name. Relative links to `.md` pages become the guide command for that page. An unknown topic returns an error that lists the valid ones, and `Topics` returns the same list for shell completion.
 
 ## Detect the running agent
 
@@ -75,27 +97,28 @@ It returns `nil` when no agent matches, which usually means a human is typing.
 
 ## API
 
-### Skill management
+### Skills
 
-| Function                       | Description                                                                     |
-|--------------------------------|---------------------------------------------------------------------------------|
-| `Detect(projectDir, global)`   | Find which agents have config dirs present                                      |
-| `Install(fsys, opts)`          | Copy skill files to each agent's skills directory                               |
-| `Remove(name, opts)`           | Delete an installed skill by name                                               |
-| `InstalledVersion(name, opts)` | Read `version` from an installed skill's frontmatter; returns `(string, error)` |
-| `SkillVersion(fsys)`           | Read `version` from a skill FS (e.g. embedded)                                  |
-| `AgentNames()`                 | List all supported agent names                                                  |
+| Function                         | Description                                                  |
+|----------------------------------|--------------------------------------------------------------|
+| `Install(fsys, opts)`            | Install skills, or stubs when `opts.Command` is set          |
+| `Guide(fsys, cmd, skill, topic)` | Return a skill page for `<cmd> skill guide <skill> [topic]`  |
+| `Topics(fsys, skill)`            | List a skill's pages, e.g. `references/commands`             |
+| `ListSkills(fsys)`               | Name, version and description of each skill in `fsys`        |
+| `SkillVersion(fsys)`             | Version of the first skill in `fsys`                         |
+| `InstalledVersion(name, opts)`   | Version of an installed skill, or `""` if it isn't installed |
+| `Remove(name, opts)`             | Delete an installed skill with its commands and subagents    |
 
-### Runtime detection
+### Agents
 
-| Function          | Description                                                          |
-|-------------------|----------------------------------------------------------------------|
-| `DetectRuntime()` | Returns `*RuntimeAgent` for the agent running this process, or `nil` |
+| Function                     | Description                                                   |
+|------------------------------|---------------------------------------------------------------|
+| `Detect(projectDir, global)` | Agents whose config directories exist                         |
+| `AgentNames()`               | All supported agent names, sorted                             |
+| `DetectRuntime()`            | The agent running this process as a `*RuntimeAgent`, or `nil` |
 
-`RuntimeAgent` has three fields: `Name` (e.g. `"claude-code"`), `DisplayName` (e.g. `"Claude Code"`), and `EnvVar` (the variable that matched, e.g. `"CLAUDECODE"`).
+`RuntimeAgent` has `Name` (`"claude-code"`), `DisplayName` (`"Claude Code"`) and `EnvVar`, the variable that matched (`"CLAUDECODE"`).
 
-## Upstream sync
+## Agent registry
 
-Agent directories are sourced from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts). Runtime env vars are cross-referenced with [vercel/vercel detect-agent](https://github.com/vercel/vercel/blob/main/packages/detect-agent/src/index.ts). A weekly agentic workflow keeps both in sync.
-
-76 agents supported. Run `instill.AgentNames()` for the full list, or see [agents.go](agents.go).
+Skill directories come from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts) and runtime variables from [vercel/vercel detect-agent](https://github.com/vercel/vercel/blob/main/packages/detect-agent/src/index.ts). A weekly workflow syncs both. The full list is in [agents.go](agents.go).
