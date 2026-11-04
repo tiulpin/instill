@@ -33,7 +33,7 @@ var agents = [...]agent{
 	{"continue", "Continue", ".continue/skills", "~/.continue/skills", d(".continue", "~/.continue"), nil},
 	{"cortex", "Cortex Code", ".cortex/skills", "~/.snowflake/cortex/skills", d("~/.snowflake/cortex"), nil},
 	{"crush", "Crush", ".crush/skills", "~/.config/crush/skills", d("~/.config/crush"), nil},
-	{"cursor", "Cursor", ".agents/skills", "~/.cursor/skills", d("~/.cursor"), e("CURSOR_TRACE_ID", "CURSOR_AGENT")},
+	{"cursor", "Cursor", ".agents/skills", "~/.cursor/skills", d("~/.cursor"), e("CURSOR_AGENT")},
 	{"deepagents", "Deep Agents", ".agents/skills", "~/.deepagents/agent/skills", d("~/.deepagents"), nil},
 	{"devin", "Devin for Terminal", ".devin/skills", "$XDG_CONFIG_HOME/devin/skills", d("$XDG_CONFIG_HOME/devin"), nil},
 	{"dexto", "Dexto", ".agents/skills", "~/.agents/skills", d("~/.dexto"), nil},
