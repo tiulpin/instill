@@ -75,6 +75,22 @@ With `Command` set, `Install` writes a short `SKILL.md` with the original frontm
 
 Without a topic, `Guide` returns the `SKILL.md` body and a list of topics. A topic is a page path without `.md`, such as `references/commands`, or just `commands` if no other page has that name. Relative links to `.md` pages become the guide command for that page. An unknown topic returns an error that lists the valid ones, and `Topics` returns the same list for shell completion.
 
+## Add the skill command
+
+For Cobra CLIs, the `skillcmd` package builds the whole `skill` command: `list`, `install`, `update`, `remove`, and `guide` when `Stub` is set.
+
+```go
+root.AddCommand(skillcmd.New(skillcmd.Options{
+    Command: "your-tool",
+    Product: "Your Tool",
+    Skills:  []fs.FS{skills},
+    Default: "your-skill",
+    Stub:    true,
+}))
+```
+
+`install`, `update` and `remove` take skill names or `--all`, plus `--agent` and `--project`, and detect agents when `--agent` is omitted. `update` does nothing when every installed version matches the bundled one. `list --json` prints the bundled skills as JSON. Pass a `Printer` to send status messages through your CLI's own output, and `Track` to get one `Event` per agent for analytics. Shell completion covers skill names, agents and guide topics.
+
 ## Detect the running agent
 
 ```go
