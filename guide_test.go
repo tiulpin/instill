@@ -127,3 +127,25 @@ func TestGuideBackAndReferenceLinks(t *testing.T) {
 		t.Errorf("backlink: %q", got)
 	}
 }
+
+func TestGuideKeepsCode(t *testing.T) {
+	body := "See [run](references/run.md) or `[raw](references/run.md)`.\n\n```markdown\n[Run](references/run.md)\n[cmd]: references/run.md\n```\n\n~~~\n[Run](references/run.md)\n~~~\n"
+	fsys := fstest.MapFS{
+		"SKILL.md":          &fstest.MapFile{Data: []byte("---\nname: x\ndescription: X.\n---\n\n" + body)},
+		"references/run.md": &fstest.MapFile{Data: []byte("# Run\n")},
+	}
+	got, err := Guide(fsys, "tool", "x", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"See run (`tool skill guide x references/run`)",
+		"`[raw](references/run.md)`",
+		"```markdown\n[Run](references/run.md)\n[cmd]: references/run.md\n```",
+		"~~~\n[Run](references/run.md)\n~~~",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}

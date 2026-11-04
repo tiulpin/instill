@@ -122,25 +122,47 @@ func matchTopic(topics []string, topic string) (string, error) {
 
 var (
 	mdLink    = regexp.MustCompile(`\[([^\]]*)\]\(([^()\s]+\.md)(#[^()\s]*)?\)`)
-	mdLinkDef = regexp.MustCompile(`(?m)^( {0,3}\[[^\]]+\]:)[ \t]*<?([^\s<>]+\.md)(#\S*)?>?[ \t]*$`)
+	mdLinkDef = regexp.MustCompile(`^( {0,3}\[[^\]]+\]:)[ \t]*<?([^\s<>]+\.md)(#\S*)?>?[ \t]*\r?\n?$`)
 )
 
-// rewriteLinks turns links to pages Guide serves into guide commands. Other links are left as is.
+// rewriteLinks turns links to pages Guide serves into guide commands. Other links, fenced
+// code blocks and inline code are left as is.
 func rewriteLinks(topics []string, pageDir, page, command, skill string) string {
-	page = mdLink.ReplaceAllStringFunc(page, func(m string) string {
-		sub := mdLink.FindStringSubmatch(m)
-		if cmd, ok := guideLink(topics, pageDir, sub[2], command, skill); ok {
-			return sub[1] + " (`" + cmd + "`)"
+	link := func(target string) (string, bool) { return guideLink(topics, pageDir, target, command, skill) }
+	lines := strings.SplitAfter(page, "\n")
+	fence := ""
+	for i, line := range lines {
+		trimmed := strings.TrimLeft(line, " ")
+		if fence != "" {
+			if strings.HasPrefix(trimmed, fence) {
+				fence = ""
+			}
+			continue
 		}
-		return m
-	})
-	return mdLinkDef.ReplaceAllStringFunc(page, func(m string) string {
-		sub := mdLinkDef.FindStringSubmatch(m)
-		if cmd, ok := guideLink(topics, pageDir, sub[2], command, skill); ok {
-			return sub[1] + " `" + cmd + "`"
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			fence = trimmed[:3]
+			continue
 		}
-		return m
-	})
+		if sub := mdLinkDef.FindStringSubmatch(line); sub != nil {
+			if cmd, ok := link(sub[2]); ok {
+				lines[i] = sub[1] + " `" + cmd + "`" + line[len(strings.TrimRight(line, "\r\n")):]
+			}
+			continue
+		}
+		// Even segments of a backtick split are outside inline code.
+		parts := strings.Split(line, "`")
+		for j := 0; j < len(parts); j += 2 {
+			parts[j] = mdLink.ReplaceAllStringFunc(parts[j], func(m string) string {
+				sub := mdLink.FindStringSubmatch(m)
+				if cmd, ok := link(sub[2]); ok {
+					return sub[1] + " (`" + cmd + "`)"
+				}
+				return m
+			})
+		}
+		lines[i] = strings.Join(parts, "`")
+	}
+	return strings.Join(lines, "")
 }
 
 // guideLink resolves target against the page's directory, then the skill root, and returns
