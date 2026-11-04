@@ -122,3 +122,30 @@ It returns `nil` when no agent matches, which usually means a human is typing.
 ## Agent registry
 
 Skill directories come from [vercel-labs/skills](https://github.com/vercel-labs/skills/blob/main/src/agents.ts) and runtime variables from [vercel/vercel detect-agent](https://github.com/vercel/vercel/blob/main/packages/detect-agent/src/index.ts). A weekly workflow syncs both. The full list is in [agents.go](agents.go).
+
+### Maintaining the sync workflow
+
+The sync uses the official [GitHub Agentic Workflows](https://github.github.com/gh-aw/)
+tooling. Its source is `.github/workflows/sync-upstream-agents.md`; the matching
+`.lock.yml` and `.github/aw/actions-lock.json` are generated files. Refresh the
+tooling with `gh aw upgrade`, review the changes, and commit the generated files
+with the source. The `.lock.yml` is required for GitHub Actions to run the workflow.
+
+This personally owned repository uses the Actions secret `COPILOT_GITHUB_TOKEN`
+for inference: a fine-grained PAT owned by a user with Copilot access, with the
+account permission **Copilot Requests: Read**. To start CI on bot-created pull
+requests, also configure `GH_AW_CI_TRIGGER_TOKEN` with **Contents: Read & Write**
+scoped to this repository, or configure the supported GitHub App alternative.
+Set secrets in **Settings → Secrets and variables → Actions**; do not put token
+values in workflow files. See the [authentication guide](https://github.github.com/gh-aw/reference/auth/)
+and [CI trigger guide](https://github.github.com/gh-aw/reference/triggering-ci/).
+
+After merging workflow changes, enable and run the current default-branch version:
+
+```bash
+gh workflow enable sync-upstream-agents.lock.yml --repo tiulpin/instill
+gh workflow run sync-upstream-agents.lock.yml --repo tiulpin/instill --ref main
+gh run list --repo tiulpin/instill --workflow sync-upstream-agents.lock.yml --limit 5
+```
+
+The sync opens pull requests for review; it does not merge registry changes.

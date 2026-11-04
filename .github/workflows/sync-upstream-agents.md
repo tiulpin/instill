@@ -3,6 +3,9 @@ on:
   schedule: weekly
   workflow_dispatch:
 
+engine: copilot
+timeout-minutes: 20
+
 permissions:
   contents: read
   issues: read
@@ -42,6 +45,12 @@ This Go library (`github.com/tiulpin/instill`) manages skill installation and ru
 - Fields 1-5 (name, display, paths, detectDirs) come from `vercel-labs/skills`
 - Field 6 (`runtimeEnvs` via `e()` helper) comes from `vercel/vercel` detect-agent + our own additions
 
+This workflow owns registry data in `agents.go` and the corresponding expectations in
+`instill_test.go`. Runtime detection policy lives in `instill.go`: preserve its
+`runtimeAliases`, universal-variable priority, and Cursor fallback ordering. If an
+upstream change requires a policy change, explain it in the pull request for a
+maintainer to handle separately.
+
 ### Instructions
 
 1. **Fetch upstream sources**:
@@ -63,6 +72,8 @@ This Go library (`github.com/tiulpin/instill`) manages skill installation and ru
    - Note: detect-agent also checks for `AI_AGENT` (universal) and `AGENT` (generic) — these are handled in `DetectRuntime()` logic, not in the per-agent `runtimeEnvs`. Do not add them to agent entries.
    - Note: detect-agent checks `CLAUDE_CODE_IS_COWORK` for cowork mode — this is handled as a special case in `DetectRuntime()`, not as a per-agent env var.
    - Note: detect-agent checks `/opt/.devin` filesystem path — this is handled in `DetectRuntime()` as a fallback, not in per-agent `runtimeEnvs`.
+   - Note: `CURSOR_EXTENSION_HOST_ROLE` and `CURSOR_TRACE_ID` are handled after other agents in `DetectRuntime()`. Do not put them into Cursor's registry entry: an agent launched inside Cursor must still be detected as itself.
+   - Preserve documented local additions when upstream omits them. Distinguish a deliberate upstream change from data missing from one of the two sources.
 
 5. **If no changes needed**: Do not create a PR. You MUST call the `noop` safe output tool with a short message (e.g. "agents.go is up to date with upstream") — finishing without calling any safe output is treated as a failure.
 
@@ -76,7 +87,10 @@ This Go library (`github.com/tiulpin/instill`) manages skill installation and ru
    - Keep the array sorted alphabetically by agent ID
    - Match the existing code style exactly (tabs, spacing, `d()` for detectDirs, `e()` for runtimeEnvs, `nil` when empty)
 
-7. **Update tests**: If changes affect test expectations in `instill_test.go`, update those too. Run `go test ./... -race` to verify everything passes.
+7. **Validate the changes**:
+   - Update registry-related test expectations in `instill_test.go` when needed. Preserve runtime precedence and alias regression tests.
+   - Run `gofmt` on changed Go files, `go vet ./...`, and `go test ./... -race`. Do not create a pull request if a check fails or cannot run; report the failure with the available safe output instead.
+   - Inspect `git diff --name-only`: only `agents.go` and `instill_test.go` may change. Do not edit workflow files, credentials, dependencies, or runtime detection policy.
 
 8. **Create a pull request** (using the `create_pull_request` safe output) with the changes. The PR description should list what changed, grouped by source:
    - From vercel-labs/skills: new agents, updated paths, removed agents
