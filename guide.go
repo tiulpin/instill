@@ -129,40 +129,45 @@ var (
 // code blocks and inline code are left as is.
 func rewriteLinks(topics []string, pageDir, page, command, skill string) string {
 	link := func(target string) (string, bool) { return guideLink(topics, pageDir, target, command, skill) }
-	lines := strings.SplitAfter(page, "\n")
+	var b strings.Builder
 	fence := ""
-	for i, line := range lines {
-		trimmed := strings.TrimLeft(line, " ")
-		if fence != "" {
-			if strings.HasPrefix(trimmed, fence) {
-				fence = ""
-			}
-			continue
-		}
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			fence = trimmed[:3]
-			continue
-		}
-		if sub := mdLinkDef.FindStringSubmatch(line); sub != nil {
-			if cmd, ok := link(sub[2]); ok {
-				lines[i] = sub[1] + " `" + cmd + "`" + line[len(strings.TrimRight(line, "\r\n")):]
-			}
-			continue
-		}
-		// Even segments of a backtick split are outside inline code.
-		parts := strings.Split(line, "`")
-		for j := 0; j < len(parts); j += 2 {
-			parts[j] = mdLink.ReplaceAllStringFunc(parts[j], func(m string) string {
-				sub := mdLink.FindStringSubmatch(m)
-				if cmd, ok := link(sub[2]); ok {
-					return sub[1] + " (`" + cmd + "`)"
-				}
-				return m
-			})
-		}
-		lines[i] = strings.Join(parts, "`")
+	for line := range strings.SplitAfterSeq(page, "\n") {
+		b.WriteString(rewriteLine(line, &fence, link))
 	}
-	return strings.Join(lines, "")
+	return b.String()
+}
+
+// rewriteLine rewrites one line, tracking whether it sits inside a fenced code block.
+func rewriteLine(line string, fence *string, link func(string) (string, bool)) string {
+	trimmed := strings.TrimLeft(line, " ")
+	if *fence != "" {
+		if strings.HasPrefix(trimmed, *fence) {
+			*fence = ""
+		}
+		return line
+	}
+	if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+		*fence = trimmed[:3]
+		return line
+	}
+	if sub := mdLinkDef.FindStringSubmatch(line); sub != nil {
+		if cmd, ok := link(sub[2]); ok {
+			return sub[1] + " `" + cmd + "`" + line[len(strings.TrimRight(line, "\r\n")):]
+		}
+		return line
+	}
+	// Even segments of a backtick split are outside inline code.
+	parts := strings.Split(line, "`")
+	for j := 0; j < len(parts); j += 2 {
+		parts[j] = mdLink.ReplaceAllStringFunc(parts[j], func(m string) string {
+			sub := mdLink.FindStringSubmatch(m)
+			if cmd, ok := link(sub[2]); ok {
+				return sub[1] + " (`" + cmd + "`)"
+			}
+			return m
+		})
+	}
+	return strings.Join(parts, "`")
 }
 
 // guideLink resolves target against the page's directory, then the skill root, and returns
