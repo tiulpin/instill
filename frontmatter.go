@@ -19,11 +19,20 @@ func (f frontmatter) version() string {
 	if f.Version != "" {
 		return f.Version
 	}
-	return f.Metadata["version"].Value
+	return f.metadata("version")
 }
 
 func (f frontmatter) internal() bool {
-	return f.Metadata["internal"].Value == "true"
+	return f.metadata("internal") == "true"
+}
+
+// metadata returns a metadata scalar, following YAML aliases.
+func (f frontmatter) metadata(key string) string {
+	n := f.Metadata[key]
+	for n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = *n.Alias
+	}
+	return n.Value
 }
 
 func parseFrontmatter(data []byte) (frontmatter, error) {
@@ -39,6 +48,7 @@ func parseFrontmatter(data []byte) (frontmatter, error) {
 }
 
 // cutFrontmatter splits SKILL.md into the YAML between the --- lines and the body after them.
+// The closing --- must start the line, so an indented --- inside a block scalar stays YAML.
 func cutFrontmatter(data []byte) (string, string, bool) {
 	s := strings.TrimLeft(string(data), "\ufeff\r\n")
 	first, rest, ok := strings.Cut(s, "\n")
@@ -47,7 +57,7 @@ func cutFrontmatter(data []byte) (string, string, bool) {
 	}
 	for i := 0; i <= len(rest); {
 		line, _, more := strings.Cut(rest[i:], "\n")
-		if strings.TrimSpace(line) == "---" {
+		if strings.TrimRight(line, " \t\r") == "---" {
 			body := ""
 			if more {
 				body = rest[i+len(line)+1:]
