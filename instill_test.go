@@ -640,7 +640,7 @@ func TestInstallDeterministicOrder(t *testing.T) {
 
 	// Run multiple times and verify order is stable
 	var first []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dir := filepath.Join(tmp, fmt.Sprintf("run%d", i))
 		results, err := Install(skillFS("x"), Options{Command: "tool", Agents: agents, ProjectDir: dir})
 		if err != nil {
