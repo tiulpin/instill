@@ -166,11 +166,18 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 		return nil, err
 	}
 	var results []Result
+	var selected []skillEntry
 	for _, s := range skills {
 		named := slices.Contains(opts.Skills, s.name)
 		if len(opts.Skills) > 0 && !named || s.internal && !named {
 			continue
 		}
+		selected = append(selected, s)
+	}
+	if err := checkCollisions(selected); err != nil {
+		return nil, err
+	}
+	for _, s := range selected {
 		for _, dir := range slices.Sorted(maps.Keys(targets)) {
 			agentNames := targets[dir]
 			skillDir := filepath.Join(dir, s.name)
@@ -338,6 +345,7 @@ func resolveTargets(opts Options) (map[string][]string, error) {
 
 type skillEntry struct {
 	name      string
+	dir       string // skill directory in the source filesystem
 	internal  bool
 	files     map[string][]byte // regular skill files
 	commands  map[string][]byte // files from _commands/ (filename to content)
@@ -397,7 +405,7 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		}
 		commands := collectSubdir(fsys, skillDir, "_commands")
 		subagents := collectSubdir(fsys, skillDir, "_agents")
-		out = append(out, skillEntry{name, f.internal(), files, commands, subagents})
+		out = append(out, skillEntry{name, skillDir, f.internal(), files, commands, subagents})
 		return fs.SkipDir
 	})
 	return out, err
@@ -567,6 +575,35 @@ func removeExtras(files []string, agentName string, dirs map[string][2]string, o
 	for _, name := range files {
 		_ = os.Remove(filepath.Join(targetDir, name))
 	}
+}
+
+// checkCollisions rejects skills that would overwrite each other's directory, commands
+// or subagents, before anything is written.
+func checkCollisions(skills []skillEntry) error {
+	owners := map[string]string{}
+	claim := func(key, dir string) error {
+		if other, ok := owners[key]; ok {
+			return fmt.Errorf("instill: %s is shipped by both %s and %s", key, other, dir)
+		}
+		owners[key] = dir
+		return nil
+	}
+	for _, s := range skills {
+		if err := claim("skill "+s.name, s.dir); err != nil {
+			return err
+		}
+		for name := range s.commands {
+			if err := claim("command "+name, s.dir); err != nil {
+				return err
+			}
+		}
+		for name := range s.subagents {
+			if err := claim("subagent "+name, s.dir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // dropped returns the previously installed extras that the new version no longer ships.

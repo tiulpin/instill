@@ -911,3 +911,31 @@ func TestDetectRuntimeVercelCompat(t *testing.T) {
 		})
 	}
 }
+
+func TestInstallRejectsCollisions(t *testing.T) {
+	skill := func(name string) *fstest.MapFile {
+		return &fstest.MapFile{Data: []byte("---\nname: " + name + "\ndescription: Test skill.\n---\n")}
+	}
+	for name, fsys := range map[string]fstest.MapFS{
+		"skill name": {"a/tool/SKILL.md": skill("tool"), "b/tool/SKILL.md": skill("tool")},
+		"subagent": {
+			"a/SKILL.md": skill("a"), "a/_agents/helper.md": {Data: []byte("A")},
+			"b/SKILL.md": skill("b"), "b/_agents/helper.md": {Data: []byte("B")},
+		},
+		"command": {
+			"a/SKILL.md": skill("a"), "a/_commands/go.md": {Data: []byte("A")},
+			"b/SKILL.md": skill("b"), "b/_commands/go.md": {Data: []byte("B")},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tmp := t.TempDir()
+			_, err := Install(fsys, Options{Agents: []string{"claude-code"}, ProjectDir: tmp})
+			if err == nil || !strings.Contains(err.Error(), "shipped by both") {
+				t.Fatalf("want collision error, got %v", err)
+			}
+			if entries, _ := os.ReadDir(filepath.Join(tmp, ".claude")); len(entries) != 0 {
+				t.Errorf("files written before the collision was detected: %v", entries)
+			}
+		})
+	}
+}
