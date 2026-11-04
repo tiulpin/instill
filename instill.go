@@ -1,7 +1,6 @@
 package instill
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -29,6 +28,7 @@ type Options struct {
 	Skills     []string // if set, only install/update these skill names (by frontmatter name)
 	ProjectDir string   // project root (for project-level operations)
 	Global     bool     // operate on global dirs instead of project-level
+	Command    string   // if set, install stubs that run `<Command> skill guide <skill>`; empty copies the full skill
 }
 
 // Result reports what happened for each agent
@@ -143,9 +143,13 @@ func Detect(projectDir string, global bool) ([]Agent, error) {
 	return out, nil
 }
 
-// Install writes skill files from fsys to each target agent's skills directory.
-// Files under _commands/ and _agents/ in the skill are installed as commands and
-// subagents for agents that support them (e.g., Claude Code).
+// Install writes skill files from fsys to each target agent's skills directory. With
+// opts.Command set, SKILL.md becomes a stub with the original frontmatter and a body
+// pointing at `<Command> skill guide <skill>`, and the .md pages are left to Guide; files
+// under assets/ and scripts/ and other non-Markdown files are still copied. Files under
+// _commands/ and _agents/ are installed as commands and subagents for agents that
+// support them (e.g., Claude Code). Skills with metadata.internal are installed only
+// when opts.Skills names them.
 func Install(fsys fs.FS, opts Options) ([]Result, error) {
 	if len(opts.Agents) == 0 {
 		return nil, fmt.Errorf("instill: no agents specified")
@@ -163,7 +167,8 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 	}
 	var results []Result
 	for _, s := range skills {
-		if len(opts.Skills) > 0 && !slices.Contains(opts.Skills, s.name) {
+		named := slices.Contains(opts.Skills, s.name)
+		if len(opts.Skills) > 0 && !named || s.internal && !named {
 			continue
 		}
 		for _, dir := range slices.Sorted(maps.Keys(targets)) {
@@ -173,8 +178,13 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 			existed := statErr == nil
 
 			priorVersion := installedVersionAt(skillDir)
+			prior := readManifest(skillDir)
 
-			if writeErr := writeFiles(skillDir, s.files); writeErr != nil {
+			files := s.files
+			if opts.Command != "" {
+				files = stubFiles(s, opts.Command)
+			}
+			if writeErr := writeFiles(skillDir, files); writeErr != nil {
 				return nil, fmt.Errorf("instill: writing to %s: %w", skillDir, writeErr)
 			}
 
@@ -185,6 +195,8 @@ func Install(fsys fs.FS, opts Options) ([]Result, error) {
 
 			for _, an := range agentNames {
 				r := Result{Agent: an, Skill: s.name, Path: skillDir, Existed: existed, PriorVersion: priorVersion}
+				removeExtras(dropped(prior.Commands, s.commands), an, commandsDirs, opts)
+				removeExtras(dropped(prior.Subagents, s.subagents), an, subagentsDirs, opts)
 
 				if cmds, installErr := installExtras(s.commands, an, commandsDirs, opts); installErr != nil {
 					return nil, installErr
@@ -276,13 +288,11 @@ func ListSkills(fsys fs.FS) []SkillMeta {
 		if err != nil {
 			return err
 		}
-		name, _ := parseFrontmatterField(data, "name")
-		if name == "" {
+		f, _ := parseFrontmatter(data)
+		if f.Name == "" || f.internal() {
 			return fs.SkipDir
 		}
-		version, _ := parseFrontmatterField(data, "version")
-		desc, _ := parseFrontmatterField(data, "description")
-		out = append(out, SkillMeta{Name: sanitizeName(name), Version: version, Description: desc})
+		out = append(out, SkillMeta{Name: sanitizeName(f.Name), Version: f.version(), Description: f.Description})
 		return fs.SkipDir
 	})
 	return out
@@ -302,8 +312,8 @@ func installedVersionAt(skillDir string) string {
 	if err != nil {
 		return ""
 	}
-	v, _ := parseFrontmatterField(data, "version")
-	return v
+	f, _ := parseFrontmatter(data)
+	return f.version()
 }
 
 func resolveTargets(opts Options) (map[string][]string, error) {
@@ -328,9 +338,10 @@ func resolveTargets(opts Options) (map[string][]string, error) {
 
 type skillEntry struct {
 	name      string
+	internal  bool
 	files     map[string][]byte // regular skill files
-	commands  map[string][]byte // files from _commands/ (filename → content)
-	subagents map[string][]byte // files from _agents/ (filename → content)
+	commands  map[string][]byte // files from _commands/ (filename to content)
+	subagents map[string][]byte // files from _agents/ (filename to content)
 }
 
 // skipDirs are directories excluded from regular skill file collection.
@@ -350,6 +361,10 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		name, err := parseName(data)
 		if err != nil {
 			return fmt.Errorf("%s: %w", p, err)
+		}
+		f, _ := parseFrontmatter(data)
+		if strings.TrimSpace(f.Description) == "" {
+			return fmt.Errorf("%s: frontmatter missing required 'description' field", p)
 		}
 		skillDir := path.Dir(p)
 		files := map[string][]byte{}
@@ -382,14 +397,46 @@ func findSkills(fsys fs.FS) ([]skillEntry, error) {
 		}
 		commands := collectSubdir(fsys, skillDir, "_commands")
 		subagents := collectSubdir(fsys, skillDir, "_agents")
-		out = append(out, skillEntry{name, files, commands, subagents})
+		out = append(out, skillEntry{name, f.internal(), files, commands, subagents})
 		return fs.SkipDir
 	})
 	return out, err
 }
 
+// stubFiles replaces SKILL.md with a stub and drops the pages Guide serves.
+func stubFiles(s skillEntry, command string) map[string][]byte {
+	files := map[string][]byte{"SKILL.md": stub(s.files["SKILL.md"], command, s.name)}
+	for rel, content := range s.files {
+		if rel != "SKILL.md" && !isPage(rel) {
+			files[rel] = content
+		}
+	}
+	return files
+}
+
+// isPage reports whether rel is a Markdown page served by Guide; files under assets/ and
+// scripts/ are resources and get installed.
+func isPage(rel string) bool {
+	top, _, _ := strings.Cut(rel, "/")
+	return path.Ext(rel) == ".md" && rel != "SKILL.md" && top != "assets" && top != "scripts"
+}
+
+func stub(skillMD []byte, command, name string) []byte {
+	front, _, _ := cutFrontmatter(skillMD)
+	return fmt.Appendf(nil, `---
+%s
+---
+
+# %s
+
+This file is a discovery stub. Run `+"`%s skill guide %s`"+` and follow the guide it prints; it matches the installed `+"`%s`"+` version and lists further topics.
+
+If `+"`%s skill guide`"+` is unavailable, use `+"`%s --help`"+`.
+`, strings.TrimRight(front, "\r\n"), name, command, name, command, command, command)
+}
+
 // collectSubdir reads all files from a subdirectory of a skill, returning
-// a map of filename → content. Returns nil if the subdirectory doesn't exist.
+// a map of filename to content. Returns nil if the subdirectory doesn't exist.
 func collectSubdir(fsys fs.FS, skillDir, subdir string) map[string][]byte {
 	dir := subdir
 	if skillDir != "." {
@@ -431,34 +478,15 @@ func sanitizeName(name string) string {
 }
 
 func parseName(data []byte) (string, error) {
-	name, err := parseFrontmatterField(data, "name")
+	f, err := parseFrontmatter(data)
 	if err != nil {
 		return "", err
 	}
+	name := f.Name
 	if name == "" {
 		return "", fmt.Errorf("frontmatter missing required 'name' field")
 	}
 	return sanitizeName(name), nil
-}
-
-func parseFrontmatterField(data []byte, field string) (string, error) {
-	data = bytes.TrimSpace(data)
-	if !bytes.HasPrefix(data, []byte("---")) {
-		return "", fmt.Errorf("missing frontmatter (must start with ---)")
-	}
-	parts := bytes.SplitN(data, []byte("---"), 3)
-	if len(parts) < 3 {
-		return "", fmt.Errorf("malformed frontmatter: missing closing ---")
-	}
-	for _, line := range bytes.Split(parts[1], []byte("\n")) {
-		k, v, ok := bytes.Cut(line, []byte(":"))
-		if ok && strings.TrimSpace(string(k)) == field {
-			val := strings.TrimSpace(string(v))
-			val = strings.Trim(val, `"'`)
-			return val, nil
-		}
-	}
-	return "", nil
 }
 
 var excludedFiles = map[string]bool{"README.md": true, "metadata.json": true}
@@ -539,6 +567,17 @@ func removeExtras(files []string, agentName string, dirs map[string][2]string, o
 	for _, name := range files {
 		_ = os.Remove(filepath.Join(targetDir, name))
 	}
+}
+
+// dropped returns the previously installed extras that the new version no longer ships.
+func dropped(prior []string, current map[string][]byte) []string {
+	var out []string
+	for _, name := range prior {
+		if _, ok := current[name]; !ok {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 type extrasManifest struct {
