@@ -22,7 +22,7 @@ network:
 
 safe-outputs:
   create-pull-request:
-    title-prefix: "[sync] "
+    title-prefix: "sync: "
     labels: [automation, upstream-sync]
     draft: false
 ---
@@ -92,6 +92,10 @@ maintainer to handle separately.
    - Run `gofmt` on changed Go files, `go vet ./...`, and `go test ./... -race`. Do not create a pull request if a check fails or cannot run; report the failure with the available safe output instead.
    - Inspect `git diff --name-only`: only `agents.go` and `instill_test.go` may change. Do not edit workflow files, credentials, dependencies, or runtime detection policy.
 
-8. **Create a pull request** (using the `create_pull_request` safe output) with the changes. The PR description should list what changed, grouped by source:
+8. **Commit the changes** using the repository's existing commit style:
+   - Make one commit with a subject of the form `sync: <short lowercase imperative summary>`, without a trailing period. For example: `sync: add eve and promptscript agents` or `sync: update agent registry from upstream sources`.
+   - Use the same subject as the pull request title passed to `create_pull_request`. Do not use a bracketed `[sync]` tag, title case, or a generic subject such as `Update agents.go`.
+
+9. **Create a pull request** (using the `create_pull_request` safe output) with the changes. The PR description should list what changed, grouped by source:
    - From vercel-labs/skills: new agents, updated paths, removed agents
    - From vercel/vercel detect-agent: new runtime env vars, updated mappings, removed mappings
